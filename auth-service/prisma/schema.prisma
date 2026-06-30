@@ -1,0 +1,52 @@
+// auth-service/prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  nombre    String
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  parcelas Parcela[]
+
+  @@map("users")
+}
+
+model Parcela {
+  id          String   @id @default(uuid())
+  nombre      String
+  ubicacion   String
+  hectareas   Float
+  cultivo     String   @default("cacao")
+  userId      String   @map("user_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  climas Clima[]
+
+  @@map("parcelas")
+}
+
+model Clima {
+  id           String   @id @default(uuid())
+  parcelaId    String   @map("parcela_id")
+  temperatura  Float    // °C
+  humedad      Float    // %
+  precipitacion Float   // mm
+  nivelRiesgo  String   @default("BAJO") // BAJO | MEDIO | ALTO
+  fecha        DateTime @default(now())
+
+  parcela Parcela @relation(fields: [parcelaId], references: [id], onDelete: Cascade)
+
+  @@map("climas")
+}
