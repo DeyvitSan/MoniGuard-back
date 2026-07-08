@@ -1,0 +1,25 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Bitacora {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  destino       String   // nombre del municipio (ej. "Tapachula")
+  destinoLat    Float    @map("destino_lat")
+  destinoLng    Float    @map("destino_lng")
+  texto         String   // observación redactada por el técnico
+  temperatura   Float?   // clima capturado antes de salir
+  humedad       Float?
+  precipitacion Float?
+  sincronizada  Boolean  @default(false)
+  creadaEn      DateTime @default(now()) @map("creada_en")
+  sincronizadaEn DateTime? @map("sincronizada_en")
+
+  @@map("bitacoras")
+}
