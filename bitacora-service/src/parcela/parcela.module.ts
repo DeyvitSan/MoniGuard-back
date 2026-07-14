@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ParcelaController } from './parcela.controller';
 import { ParcelaService } from './parcela.service';
+import { ClimaService } from './clima.service';
 
 @Module({
   controllers: [ParcelaController],
-  providers: [ParcelaService],
+  providers: [ParcelaService, ClimaService],
+  exports: [ClimaService],
 })
 export class ParcelaModule {}

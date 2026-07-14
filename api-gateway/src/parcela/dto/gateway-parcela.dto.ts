@@ -1,3 +1,4 @@
+// api-gateway/src/parcela/dto/gateway-parcela.dto.ts
 import { IsString, IsNumber, IsOptional, MinLength } from 'class-validator';
 
 export class CreateParcelaDto {
@@ -15,4 +16,12 @@ export class CreateParcelaDto {
   @IsOptional()
   @IsString()
   cultivo?: string;
+
+  @IsOptional()
+  @IsNumber()
+  destinoLat?: number;
+
+  @IsOptional()
+  @IsNumber()
+  destinoLng?: number;
 }

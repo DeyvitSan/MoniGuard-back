@@ -1,6 +1,7 @@
 import { Controller } from '@nestjs/common';
 import { MessagePattern, Payload, RpcException } from '@nestjs/microservices';
 import { ParcelaService } from './parcela.service';
+import { ClimaService } from './clima.service';
 
 interface CreateParcelaPayload {
   userId: string;
@@ -8,11 +9,16 @@ interface CreateParcelaPayload {
   ubicacion: string;
   hectareas: number;
   cultivo?: string;
+  destinoLat?: number;
+  destinoLng?: number;
 }
 
 @Controller()
 export class ParcelaController {
-  constructor(private readonly parcelaService: ParcelaService) {}
+  constructor(
+    private readonly parcelaService: ParcelaService,
+    private readonly climaService: ClimaService,
+  ) {}
 
   @MessagePattern('parcela.create')
   async create(@Payload() data: CreateParcelaPayload) {
@@ -47,6 +53,18 @@ export class ParcelaController {
       throw new RpcException({
         statusCode: error.status || 500,
         message: error.message || 'Error interno del servidor',
+      });
+    }
+  }
+
+  @MessagePattern('parcela.getClima')
+  async getClima(@Payload() data: { lat: number; lng: number }) {
+    try {
+      return await this.climaService.getClimaActual(data.lat, data.lng);
+    } catch (error: any) {
+      throw new RpcException({
+        statusCode: 502,
+        message: 'No se pudo obtener el clima en este momento',
       });
     }
   }
