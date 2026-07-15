@@ -7,6 +7,8 @@ interface CreateParcelaInput {
   ubicacion: string;
   hectareas: number;
   cultivo?: string;
+  destinoLat?: number;
+  destinoLng?: number;
 }
 
 @Injectable()
@@ -21,12 +23,12 @@ export class ParcelaService {
         ubicacion: data.ubicacion,
         hectareas: data.hectareas,
         cultivo: data.cultivo ?? 'cacao',
+        destinoLat: data.destinoLat,
+        destinoLng: data.destinoLng,
       },
     });
   }
 
-  // El usuario puede tener varias parcelas; el front usa la primera
-  // por ahora, pero el modelo ya soporta más de una.
   async listByUser(userId: string) {
     return this.prisma.parcela.findMany({
       where: { userId },
@@ -34,7 +36,6 @@ export class ParcelaService {
     });
   }
 
-  // Útil para el flujo "¿ya tiene parcela?" en Flutter tras login.
   async hasParcela(userId: string): Promise<boolean> {
     const count = await this.prisma.parcela.count({ where: { userId } });
     return count > 0;
