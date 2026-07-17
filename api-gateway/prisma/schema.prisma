@@ -1,0 +1,57 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model bitacoras {
+  id              String    @id
+  user_id         String
+  destino         String
+  destino_lat     Float
+  destino_lng     Float
+  texto           String
+  temperatura     Float?
+  humedad         Float?
+  precipitacion   Float?
+  sincronizada    Boolean   @default(true)
+  creada_en       DateTime  @default(now())
+  sincronizada_en DateTime?
+}
+
+model climas {
+  id            String   @id
+  parcela_id    String
+  temperatura   Float
+  humedad       Float
+  precipitacion Float
+  nivelRiesgo   String   @default("BAJO")
+  fecha         DateTime @default(now())
+  parcelas      parcelas @relation(fields: [parcela_id], references: [id], onDelete: Cascade)
+}
+
+model parcelas {
+  id         String   @id
+  nombre     String
+  ubicacion  String
+  hectareas  Float
+  cultivo    String   @default("cacao")
+  user_id    String
+  created_at DateTime @default(now())
+  climas     climas[]
+  users      users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+model users {
+  id         String     @id
+  nombre     String
+  email      String     @unique
+  password   String
+  created_at DateTime   @default(now())
+  updated_at DateTime
+  parcelas   parcelas[]
+}

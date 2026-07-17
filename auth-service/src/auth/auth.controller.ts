@@ -61,4 +61,28 @@ export class AuthController {
       });
     }
   }
+
+  @MessagePattern('auth.update-name')
+  async updateName(@Payload() data: { userId: string; nombre: string }) {
+    try {
+      return await this.authService.updateName(data.userId, data.nombre);
+    } catch (error: any) {
+      throw new RpcException({
+        statusCode: error.status || 500,
+        message: error.message || 'Error al actualizar el nombre',
+      });
+    }
+  }
+
+  @MessagePattern('auth.update-password')
+  async updatePassword(@Payload() data: { userId: string; currentPassword: string; newPassword: string }) {
+    try {
+      return await this.authService.updatePassword(data.userId, data.currentPassword, data.newPassword);
+    } catch (error: any) {
+      throw new RpcException({
+        statusCode: error.status || 500,
+        message: error.message || 'Error al actualizar la contraseña',
+      });
+    }
+  }
 }
