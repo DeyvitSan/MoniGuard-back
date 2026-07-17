@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ClientsModule, Transport } from '@nestjs/microservices';
-import { HomeController } from './home.controller';
-import { HomeService } from './home.service';
+import { ParcelaController } from './parcela.controller';
 import { AuthGuard } from '../common/guards/auth.guard';
 
 @Module({
@@ -25,7 +24,7 @@ import { AuthGuard } from '../common/guards/auth.guard';
       },
     ]),
   ],
-  controllers: [HomeController],
-  providers: [AuthGuard, HomeService],
+  controllers: [ParcelaController],
+  providers: [AuthGuard],
 })
-export class HomeModule {}
+export class ParcelaModule {}

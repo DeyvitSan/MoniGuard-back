@@ -10,11 +10,11 @@ datasource db {
 model Bitacora {
   id            String   @id @default(uuid())
   userId        String   @map("user_id")
-  destino       String   // nombre del municipio (ej. "Tapachula")
+  destino       String
   destinoLat    Float    @map("destino_lat")
   destinoLng    Float    @map("destino_lng")
-  texto         String   // observación redactada por el técnico
-  temperatura   Float?   // clima capturado antes de salir
+  texto         String
+  temperatura   Float?
   humedad       Float?
   precipitacion Float?
   sincronizada  Boolean  @default(false)
@@ -22,4 +22,35 @@ model Bitacora {
   sincronizadaEn DateTime? @map("sincronizada_en")
 
   @@map("bitacoras")
+}
+
+model Parcela {
+  id         String   @id @default(uuid())
+  nombre     String
+  ubicacion  String
+  hectareas  Float
+  cultivo    String   @default("cacao")
+  userId     String   @map("user_id")
+  destinoLat Float?   @map("destino_lat")
+  destinoLng Float?   @map("destino_lng")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  climas Clima[]
+
+  @@map("parcelas")
+}
+
+
+model Clima {
+  id            String   @id @default(uuid())
+  parcelaId     String   @map("parcela_id")
+  temperatura   Float
+  humedad       Float
+  precipitacion Float?
+  nivelRiesgo   String   @default("BAJO")
+  fecha         DateTime @default(now())
+
+  parcela Parcela @relation(fields: [parcelaId], references: [id], onDelete: Cascade)
+
+  @@map("climas")
 }

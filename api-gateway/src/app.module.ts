@@ -3,8 +3,6 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
 import { AuthModule } from './auth/auth.module';
 import { HomeModule } from './home/home.module';
 import { BitacoraModule } from './bitacora/bitacora.module';
-import { PrismaService } from './prisma/prisma.service';
-import { PrismaModule } from './prisma/prisma.module';
 
 export const AUTH_SERVICE = 'AUTH_SERVICE';
 export const BITACORA_SERVICE = 'BITACORA_SERVICE';
@@ -32,7 +30,6 @@ export const BITACORA_SERVICE = 'BITACORA_SERVICE';
     AuthModule,
     HomeModule,
     BitacoraModule,
-    PrismaModule,
   ],
   providers: [PrismaService],
 })
