@@ -1,8 +1,7 @@
-import { IsString, IsNumber, IsOptional, MinLength } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsIn, IsDateString } from 'class-validator';
 
 export class CreateBitacoraDto {
   @IsString()
-  @MinLength(3, { message: 'El destino es requerido' })
   destino!: string;
 
   @IsNumber()
@@ -11,9 +10,9 @@ export class CreateBitacoraDto {
   @IsNumber()
   destinoLng!: number;
 
+  @IsOptional()
   @IsString()
-  @MinLength(5, { message: 'El texto debe tener al menos 5 caracteres' })
-  texto!: string;
+  texto?: string;
 
   @IsOptional()
   @IsNumber()
@@ -26,4 +25,12 @@ export class CreateBitacoraDto {
   @IsOptional()
   @IsNumber()
   precipitacion?: number;
+
+  @IsOptional()
+  @IsDateString()
+  fechaObservacion?: string;
+
+  @IsOptional()
+  @IsIn(['sin_sintomas', 'manchas_leves', 'manchas_extendidas', 'pudricion_visible'])
+  estadoMazorca?: string;
 }
