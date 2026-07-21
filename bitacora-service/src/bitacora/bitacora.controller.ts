@@ -7,10 +7,12 @@ interface CreateBitacoraPayload {
   destino: string;
   destinoLat: number;
   destinoLng: number;
-  texto: string;
+  texto?: string;
   temperatura?: number;
   humedad?: number;
   precipitacion?: number;
+  fechaObservacion?: string;
+  estadoMazorca?: string;
 }
 
 @Controller()
