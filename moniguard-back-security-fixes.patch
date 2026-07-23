@@ -1,0 +1,370 @@
+diff --git a/api-gateway/.env.example b/api-gateway/.env.example
+new file mode 100644
+index 0000000..f8c02ed
+--- /dev/null
++++ b/api-gateway/.env.example
+@@ -0,0 +1,17 @@
++# Copia este archivo a .env y completa los valores.
++# NUNCA subas el .env real a git (ya está en .gitignore).
++
++GATEWAY_PORT=3000
++
++# Base de datos (Prisma)
++DATABASE_URL="postgresql://user:password@host:5432/dbname"
++
++# Microservicios internos
++AUTH_SERVICE_HOST=localhost
++AUTH_SERVICE_PORT=4001
++BITACORA_SERVICE_HOST=localhost
++BITACORA_SERVICE_PORT=4002
++
++# Orígenes permitidos para CORS, separados por coma. NUNCA uses "*" en
++# producción. Ejemplo local (Flutter web/dev) + producción:
++CORS_ORIGINS="http://localhost:8080,http://10.254.52.77:8080"
+diff --git a/api-gateway/package.json b/api-gateway/package.json
+index 1a8e775..f5f05e9 100644
+--- a/api-gateway/package.json
++++ b/api-gateway/package.json
+@@ -24,10 +24,12 @@
+     "@nestjs/core": "^11.0.1",
+     "@nestjs/microservices": "^11.1.27",
+     "@nestjs/platform-express": "^11.0.1",
++    "@nestjs/throttler": "^6.5.0",
+     "@prisma/client": "^6.19.3",
+     "class-transformer": "^0.5.1",
+     "class-validator": "^0.15.1",
+     "dotenv": "^17.4.2",
++    "helmet": "^8.3.0",
+     "reflect-metadata": "^0.2.2",
+     "rxjs": "^7.8.1"
+   },
+diff --git a/api-gateway/src/app.module.ts b/api-gateway/src/app.module.ts
+index ec0f152..7ad76ca 100644
+--- a/api-gateway/src/app.module.ts
++++ b/api-gateway/src/app.module.ts
+@@ -1,14 +1,25 @@
+ import { Module } from '@nestjs/common';
+ import { ClientsModule, Transport } from '@nestjs/microservices';
++import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
++import { APP_GUARD } from '@nestjs/core';
+ import { AuthModule } from './auth/auth.module';
+ import { HomeModule } from './home/home.module';
+ import { BitacoraModule } from './bitacora/bitacora.module';
++import { PrismaService } from './prisma/prisma.service';
+ 
+ export const AUTH_SERVICE = 'AUTH_SERVICE';
+ export const BITACORA_SERVICE = 'BITACORA_SERVICE';
+ 
+ @Module({
+   imports: [
++    // Rate limiting global: máx 20 requests / 60s por IP por defecto.
++    // Los endpoints de auth tienen un límite más estricto propio (ver auth.controller.ts).
++    ThrottlerModule.forRoot([
++      {
++        ttl: 60000,
++        limit: 20,
++      },
++    ]),
+     ClientsModule.register([
+       {
+         name: AUTH_SERVICE,
+@@ -31,6 +42,10 @@ export const BITACORA_SERVICE = 'BITACORA_SERVICE';
+     HomeModule,
+     BitacoraModule,
+   ],
+-  providers: [PrismaService],
++  providers: [
++    PrismaService,
++    // Aplica el rate limiting a TODAS las rutas automáticamente.
++    { provide: APP_GUARD, useClass: ThrottlerGuard },
++  ],
+ })
+ export class AppModule {}
+\ No newline at end of file
+diff --git a/api-gateway/src/auth/auth.controller.ts b/api-gateway/src/auth/auth.controller.ts
+index c633a2d..3d24caa 100644
+--- a/api-gateway/src/auth/auth.controller.ts
++++ b/api-gateway/src/auth/auth.controller.ts
+@@ -11,6 +11,7 @@ import {
+   UseGuards,
+ } from '@nestjs/common';
+ import { ClientProxy } from '@nestjs/microservices';
++import { Throttle } from '@nestjs/throttler';
+ import { firstValueFrom } from 'rxjs';
+ import { GatewayLoginDto, GatewayRegisterDto, GatewayUpdateNameDto, GatewayUpdatePasswordDto } from './dto/gateway-auth.dto';
+ import { RpcExceptionFilter } from '../common/filters/rpc-exception.filter';
+@@ -23,6 +24,9 @@ export class AuthController {
+     @Inject('AUTH_SERVICE') private readonly authClient: ClientProxy,
+   ) {}
+ 
++  // Límite estricto: 5 intentos de login por minuto por IP.
++  // Mitiga fuerza bruta / credential stuffing contra cuentas de usuario.
++  @Throttle({ default: { limit: 5, ttl: 60000 } })
+   @Post('login')
+   @HttpCode(HttpStatus.OK)
+   async login(@Body() loginDto: GatewayLoginDto) {
+@@ -34,6 +38,9 @@ export class AuthController {
+     );
+   }
+ 
++  // Límite estricto también en registro: evita creación masiva de cuentas
++  // automatizada (spam / abuso de recursos).
++  @Throttle({ default: { limit: 5, ttl: 60000 } })
+   @Post('register')
+   @HttpCode(HttpStatus.CREATED)
+   async register(@Body() registerDto: GatewayRegisterDto) {
+diff --git a/api-gateway/src/auth/dto/gateway-auth.dto.ts b/api-gateway/src/auth/dto/gateway-auth.dto.ts
+index 676b4a7..64e45a0 100644
+--- a/api-gateway/src/auth/dto/gateway-auth.dto.ts
++++ b/api-gateway/src/auth/dto/gateway-auth.dto.ts
+@@ -1,11 +1,22 @@
+-import { IsEmail, IsString, MinLength } from 'class-validator';
++import { IsEmail, IsString, Matches, MinLength } from 'class-validator';
++
++// Política de contraseña unificada con el front (AppValidators.password en
++// Flutter): mínimo 8 caracteres, al menos una mayúscula, una minúscula y un
++// número. Se aplica aquí (no solo en el cliente) porque la validación de
++// cliente nunca es suficiente por sí sola.
++const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/;
++const PASSWORD_MESSAGE =
++  'La contraseña debe tener al menos 8 caracteres, con mayúscula, minúscula y número';
+ 
+ export class GatewayLoginDto {
+   @IsEmail({}, { message: 'El email no es válido' })
+   email!: string;
+ 
++  // En login NO se valida complejidad — solo que no venga vacío. Exigir la
++  // política nueva aquí rompería el login de cuentas ya existentes con
++  // contraseñas creadas bajo la regla antigua.
+   @IsString()
+-  @MinLength(6, { message: 'La contraseña debe tener al menos 6 caracteres' })
++  @MinLength(1, { message: 'La contraseña es obligatoria' })
+   password!: string;
+ }
+ 
+@@ -18,7 +29,8 @@ export class GatewayRegisterDto {
+   email!: string;
+ 
+   @IsString()
+-  @MinLength(6, { message: 'La contraseña debe tener al menos 6 caracteres' })
++  @MinLength(8, { message: PASSWORD_MESSAGE })
++  @Matches(PASSWORD_REGEX, { message: PASSWORD_MESSAGE })
+   password!: string;
+ }
+ 
+@@ -30,10 +42,11 @@ export class GatewayUpdateNameDto {
+ 
+ export class GatewayUpdatePasswordDto {
+   @IsString()
+-  @MinLength(6, { message: 'La contraseña actual debe tener al menos 6 caracteres' })
++  @MinLength(1, { message: 'La contraseña actual es obligatoria' })
+   currentPassword!: string;
+ 
+   @IsString()
+-  @MinLength(6, { message: 'La nueva contraseña debe tener al menos 6 caracteres' })
++  @MinLength(8, { message: PASSWORD_MESSAGE })
++  @Matches(PASSWORD_REGEX, { message: PASSWORD_MESSAGE })
+   newPassword!: string;
+ }
+\ No newline at end of file
+diff --git a/api-gateway/src/config/env.validation.ts b/api-gateway/src/config/env.validation.ts
+new file mode 100644
+index 0000000..34df8bc
+--- /dev/null
++++ b/api-gateway/src/config/env.validation.ts
+@@ -0,0 +1,28 @@
++// api-gateway/src/config/env.validation.ts
++//
++// Falla el arranque del gateway si falta configuración crítica,
++// en vez de caer silenciosamente a defaults inseguros (ej. CORS abierto a *).
++// Llamar validateEnv() al inicio de main.ts, ANTES de crear la app.
++
++export function validateEnv(): void {
++  if (!process.env.DATABASE_URL) {
++    throw new Error(
++      '❌ Falta la variable de entorno DATABASE_URL. Revisa tu archivo .env (ver .env.example).',
++    );
++  }
++
++  if (!process.env.CORS_ORIGINS) {
++    throw new Error(
++      '❌ Falta la variable de entorno CORS_ORIGINS. Debe listar los orígenes permitidos ' +
++        'separados por coma (ej: "http://localhost:8080,https://app.moniguard.com"). ' +
++        'Nunca uses "*" en producción.',
++    );
++  }
++}
++
++export function getAllowedOrigins(): string[] {
++  return (process.env.CORS_ORIGINS || '')
++    .split(',')
++    .map((origin) => origin.trim())
++    .filter(Boolean);
++}
+diff --git a/api-gateway/src/main.ts b/api-gateway/src/main.ts
+index 978ffa3..ee1b94c 100644
+--- a/api-gateway/src/main.ts
++++ b/api-gateway/src/main.ts
+@@ -1,14 +1,28 @@
+ import 'dotenv/config';
+ import { NestFactory } from '@nestjs/core';
+ import { ValidationPipe } from '@nestjs/common';
++import helmet from 'helmet';
+ import { AppModule } from './app.module';
+ import { RpcExceptionFilter } from './common/filters/rpc-exception.filter';
++import { validateEnv, getAllowedOrigins } from './config/env.validation';
+ 
+ async function bootstrap() {
++  // Falla rápido si falta config crítica (CORS_ORIGINS, DATABASE_URL) en vez
++  // de arrancar con defaults inseguros como CORS abierto a cualquier origen.
++  validateEnv();
++
+   const app = await NestFactory.create(AppModule);
+ 
++  // Helmet: headers de seguridad HTTP (X-Content-Type-Options, HSTS,
++  // X-Frame-Options/CSP frame-ancestors contra clickjacking, etc.)
++  app.use(helmet());
++
++  // CORS restringido a los orígenes explícitamente permitidos por env var.
++  // Nunca origin: '*' — eso permitiría a cualquier sitio web llamar la API
++  // usando el token de un usuario si logra obtenerlo (ej. vía XSS en otro sitio).
++  const allowedOrigins = getAllowedOrigins();
+   app.enableCors({
+-    origin: '*',
++    origin: allowedOrigins,
+     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+     allowedHeaders: ['Content-Type', 'Authorization'],
+   });
+diff --git a/auth-service/.env.example b/auth-service/.env.example
+new file mode 100644
+index 0000000..16949f0
+--- /dev/null
++++ b/auth-service/.env.example
+@@ -0,0 +1,18 @@
++# Copia este archivo a .env y completa los valores.
++# NUNCA subas el .env real a git (ya está en .gitignore).
++
++# Puerto TCP del microservicio de auth
++AUTH_SERVICE_PORT=4001
++
++# Conexión a la base de datos (Prisma)
++DATABASE_URL="postgresql://user:password@host:5432/dbname"
++
++# Secretos JWT — deben ser distintos entre sí y de al menos 32 caracteres
++# aleatorios. Genera cada uno con:
++#   node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
++JWT_SECRET=""
++JWT_REFRESH_SECRET=""
++
++# Duración de los tokens
++JWT_EXPIRES_IN=15m
++JWT_REFRESH_EXPIRES_IN=7d
+diff --git a/auth-service/src/auth/auth.module.ts b/auth-service/src/auth/auth.module.ts
+index 4f5c388..4c6eab5 100644
+--- a/auth-service/src/auth/auth.module.ts
++++ b/auth-service/src/auth/auth.module.ts
+@@ -5,10 +5,12 @@ import { AuthService } from './auth.service';
+ 
+ const jwtExpiresIn = process.env.JWT_EXPIRES_IN || '15m';
+ 
++// JWT_SECRET es validado como obligatorio en env.validation.ts (validateEnv,
++// llamado desde main.ts antes de bootstrap). Si llegamos aquí, existe.
+ @Module({
+   imports: [
+     JwtModule.register({
+-      secret: process.env.JWT_SECRET || 'fallback_secret',
++      secret: process.env.JWT_SECRET as string,
+       signOptions: { expiresIn: jwtExpiresIn as any },
+     }),
+   ],
+diff --git a/auth-service/src/auth/auth.service.ts b/auth-service/src/auth/auth.service.ts
+index 71c0686..e96309d 100644
+--- a/auth-service/src/auth/auth.service.ts
++++ b/auth-service/src/auth/auth.service.ts
+@@ -26,7 +26,8 @@ export class AuthService {
+     });
+ 
+     const refreshToken = await this.jwtService.signAsync(payload, {
+-      secret: process.env.JWT_REFRESH_SECRET || 'refresh_fallback',
++      // JWT_REFRESH_SECRET es obligatorio (validado en env.validation.ts).
++      secret: process.env.JWT_REFRESH_SECRET as string,
+       expiresIn: refreshExpiresIn as any,
+     });
+ 
+@@ -85,8 +86,13 @@ export class AuthService {
+     const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+     if (!isPasswordValid) throw new UnauthorizedException('La contraseña actual es incorrecta');
+ 
+-    if (newPassword.length < 6) {
+-      throw new BadRequestException('La nueva contraseña debe tener al menos 6 caracteres');
++    // Misma política que el gateway (defense in depth: este servicio no debe
++    // confiar únicamente en que el gateway ya validó).
++    const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/;
++    if (newPassword.length < 8 || !PASSWORD_REGEX.test(newPassword)) {
++      throw new BadRequestException(
++        'La nueva contraseña debe tener al menos 8 caracteres, con mayúscula, minúscula y número',
++      );
+     }
+ 
+     const hashedPassword = await bcrypt.hash(newPassword, 10);
+diff --git a/auth-service/src/config/env.validation.ts b/auth-service/src/config/env.validation.ts
+new file mode 100644
+index 0000000..230fae5
+--- /dev/null
++++ b/auth-service/src/config/env.validation.ts
+@@ -0,0 +1,38 @@
++// auth-service/src/config/env.validation.ts
++//
++// Falla el arranque del servicio si faltan variables de entorno críticas,
++// en vez de caer silenciosamente a un secreto por defecto conocido.
++// Llamar validateEnv() al inicio de main.ts, ANTES de crear la app.
++
++const REQUIRED_ENV_VARS = ['JWT_SECRET', 'JWT_REFRESH_SECRET', 'DATABASE_URL'] as const;
++
++const MIN_SECRET_LENGTH = 32;
++
++export function validateEnv(): void {
++  const missing = REQUIRED_ENV_VARS.filter((key) => !process.env[key]);
++
++  if (missing.length > 0) {
++    throw new Error(
++      `❌ Faltan variables de entorno obligatorias: ${missing.join(', ')}. ` +
++        `Revisa tu archivo .env (ver .env.example). El servicio no arrancará sin ellas.`,
++    );
++  }
++
++  const secretVars = ['JWT_SECRET', 'JWT_REFRESH_SECRET'] as const;
++  for (const key of secretVars) {
++    const value = process.env[key] as string;
++    if (value.length < MIN_SECRET_LENGTH) {
++      throw new Error(
++        `❌ ${key} es demasiado corto (${value.length} caracteres). ` +
++          `Usa al menos ${MIN_SECRET_LENGTH} caracteres aleatorios. ` +
++          `Genera uno con: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`,
++      );
++    }
++  }
++
++  if (process.env.JWT_SECRET === process.env.JWT_REFRESH_SECRET) {
++    throw new Error(
++      '❌ JWT_SECRET y JWT_REFRESH_SECRET no pueden ser iguales. Genera dos valores distintos.',
++    );
++  }
++}
+diff --git a/auth-service/src/main.ts b/auth-service/src/main.ts
+index 30c1248..d6ae297 100644
+--- a/auth-service/src/main.ts
++++ b/auth-service/src/main.ts
+@@ -3,8 +3,12 @@ import { NestFactory } from '@nestjs/core';
+ import { MicroserviceOptions, Transport } from '@nestjs/microservices';
+ import { ValidationPipe } from '@nestjs/common';
+ import { AppModule } from './app.module';
++import { validateEnv } from './config/env.validation';
+ 
+ async function bootstrap() {
++  // Falla rápido si faltan secretos/config crítica en vez de usar defaults inseguros.
++  validateEnv();
++
+   const app = await NestFactory.createMicroservice<MicroserviceOptions>(AppModule, {
+     transport: Transport.TCP,
+     options: {
