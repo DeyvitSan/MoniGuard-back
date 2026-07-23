@@ -8,20 +8,22 @@ datasource db {
 }
 
 model Bitacora {
-  id               String    @id @default(uuid())
-  userId           String    @map("user_id")
-  destino          String
-  destinoLat       Float     @map("destino_lat")
-  destinoLng       Float     @map("destino_lng")
-  texto            String?
-  temperatura      Float?
-  humedad          Float?
-  precipitacion    Float?
-  fechaObservacion DateTime? @map("fecha_observacion")
-  estadoMazorca    String?   @map("estado_mazorca")
-  sincronizada     Boolean   @default(false)
-  creadaEn         DateTime  @default(now()) @map("creada_en")
-  sincronizadaEn   DateTime? @map("sincronizada_en")
+  id                     String    @id @default(uuid())
+  userId                 String    @map("user_id")
+  destino                String
+  destinoLat             Float     @map("destino_lat")
+  destinoLng             Float     @map("destino_lng")
+  texto                  String?
+  temperatura            Float?
+  humedad                Float?
+  precipitacion          Float?
+  fechaObservacion       DateTime? @map("fecha_observacion")
+  estadoMazorca          String?   @map("estado_mazorca")
+  analisisTextoEtiqueta  String?   @map("analisis_texto_etiqueta")
+  analisisTextoConfianza Float?    @map("analisis_texto_confianza")
+  sincronizada           Boolean   @default(false)
+  creadaEn               DateTime  @default(now()) @map("creada_en")
+  sincronizadaEn         DateTime? @map("sincronizada_en")
 
   @@map("bitacoras")
 }

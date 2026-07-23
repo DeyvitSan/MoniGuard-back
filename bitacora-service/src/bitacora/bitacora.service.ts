@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { TextoAnalisisService } from './texto-analisis.service';
 
 interface CreateBitacoraInput {
   userId: string;
@@ -16,9 +17,16 @@ interface CreateBitacoraInput {
 
 @Injectable()
 export class BitacoraService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly textoAnalisis: TextoAnalisisService,
+  ) {}
 
   async create(data: CreateBitacoraInput) {
+    // Analiza el texto libre (si hay) ANTES de guardar, para incluir
+    // el resultado en el mismo registro.
+    const analisis = await this.textoAnalisis.analizar(data.texto);
+
     return this.prisma.bitacora.create({
       data: {
         userId: data.userId,
@@ -30,6 +38,8 @@ export class BitacoraService {
         humedad: data.humedad,
         precipitacion: data.precipitacion,
         estadoMazorca: data.estadoMazorca,
+        analisisTextoEtiqueta: analisis.etiqueta,
+        analisisTextoConfianza: analisis.confianza,
         fechaObservacion: data.fechaObservacion
           ? new Date(data.fechaObservacion)
           : new Date(),
