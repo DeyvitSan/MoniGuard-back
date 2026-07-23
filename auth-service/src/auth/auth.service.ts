@@ -61,6 +61,21 @@ export class AuthService {
     return { ...tokens, user: this.formatUser(user) };
   }
 
+  async getMe(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('Usuario no encontrado');
+
+    // Se expone el hash (nunca el password en texto plano) porque el
+    // frontend lo pidió explícitamente para una vista de datos del usuario.
+    return {
+      id: user.id,
+      nombre: user.nombre,
+      email: user.email,
+      passwordHash: user.password,
+      createdAt: user.createdAt,
+    };
+  }
+
   async updateName(userId: string, nombre: string) {
     if (!nombre || nombre.trim().length < 2) {
       throw new BadRequestException('El nombre debe tener al menos 2 caracteres');

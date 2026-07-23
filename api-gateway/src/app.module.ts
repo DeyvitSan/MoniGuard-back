@@ -4,6 +4,7 @@ import { AuthModule } from './auth/auth.module';
 import { HomeModule } from './home/home.module';
 import { BitacoraModule } from './bitacora/bitacora.module';
 import { ParcelaModule } from './parcela/parcela.module';
+import { ProfileModule } from './profile/profile.module';
 import { PrismaService } from './prisma/prisma.service';
 
 export const AUTH_SERVICE = 'AUTH_SERVICE';
@@ -33,6 +34,7 @@ export const BITACORA_SERVICE = 'BITACORA_SERVICE';
     HomeModule,
     BitacoraModule,
     ParcelaModule,
+    ProfileModule,
   ],
   providers: [PrismaService],
 })

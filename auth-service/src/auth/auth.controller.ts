@@ -62,6 +62,18 @@ export class AuthController {
     }
   }
 
+  @MessagePattern('auth.me')
+  async getMe(@Payload() data: { userId: string }) {
+    try {
+      return await this.authService.getMe(data.userId);
+    } catch (error: any) {
+      throw new RpcException({
+        statusCode: error.status || 500,
+        message: error.message || 'No se pudo obtener el usuario',
+      });
+    }
+  }
+
   @MessagePattern('auth.update-name')
   async updateName(@Payload() data: { userId: string; nombre: string }) {
     try {
