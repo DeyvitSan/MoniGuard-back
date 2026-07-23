@@ -3,8 +3,12 @@ import { NestFactory } from '@nestjs/core';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+import { validateEnv } from './config/env.validation';
 
 async function bootstrap() {
+  // Falla rápido si faltan secretos/config crítica en vez de usar defaults inseguros.
+  validateEnv();
+
   const app = await NestFactory.createMicroservice<MicroserviceOptions>(AppModule, {
     transport: Transport.TCP,
     options: {

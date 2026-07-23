@@ -26,7 +26,8 @@ export class AuthService {
     });
 
     const refreshToken = await this.jwtService.signAsync(payload, {
-      secret: process.env.JWT_REFRESH_SECRET || 'refresh_fallback',
+      // JWT_REFRESH_SECRET es obligatorio (validado en env.validation.ts).
+      secret: process.env.JWT_REFRESH_SECRET as string,
       expiresIn: refreshExpiresIn as any,
     });
 
@@ -85,8 +86,13 @@ export class AuthService {
     const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
     if (!isPasswordValid) throw new UnauthorizedException('La contraseña actual es incorrecta');
 
-    if (newPassword.length < 6) {
-      throw new BadRequestException('La nueva contraseña debe tener al menos 6 caracteres');
+    // Misma política que el gateway (defense in depth: este servicio no debe
+    // confiar únicamente en que el gateway ya validó).
+    const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/;
+    if (newPassword.length < 8 || !PASSWORD_REGEX.test(newPassword)) {
+      throw new BadRequestException(
+        'La nueva contraseña debe tener al menos 8 caracteres, con mayúscula, minúscula y número',
+      );
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
