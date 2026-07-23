@@ -11,6 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
+import { Throttle } from '@nestjs/throttler';
 import { firstValueFrom } from 'rxjs';
 import { GatewayLoginDto, GatewayRegisterDto, GatewayUpdateNameDto, GatewayUpdatePasswordDto } from './dto/gateway-auth.dto';
 import { RpcExceptionFilter } from '../common/filters/rpc-exception.filter';
@@ -23,6 +24,9 @@ export class AuthController {
     @Inject('AUTH_SERVICE') private readonly authClient: ClientProxy,
   ) {}
 
+  // Límite estricto: 5 intentos de login por minuto por IP.
+  // Mitiga fuerza bruta / credential stuffing contra cuentas de usuario.
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(@Body() loginDto: GatewayLoginDto) {
@@ -34,6 +38,9 @@ export class AuthController {
     );
   }
 
+  // Límite estricto también en registro: evita creación masiva de cuentas
+  // automatizada (spam / abuso de recursos).
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   async register(@Body() registerDto: GatewayRegisterDto) {
